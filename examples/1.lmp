@@ -1,0 +1,154 @@
+clear
+variable SubFolder   string rc9p625.re0p0001.ks0p002.kdt3
+variable n           equal 12
+variable T           equal 620
+variable Run         equal 1
+variable dt          equal 3
+variable StretchMult equal 4
+
+variable LJ_Cutoff   equal 9.625
+variable RealTol     equal 0.0001
+variable KspaceTol   equal 0.002
+variable KspaceRatio equal 1
+variable RNG1        equal 12695345
+
+variable Data string C12.rc9p625.re0p0001.ks0p002.kdt3.620.dat
+log L.1.log
+
+variable 5ps   equal floor(5/(${dt}/1000))
+variable 10ps  equal floor(10/(${dt}/1000))
+variable 25ps  equal floor(25/(${dt}/1000))
+variable 50ps  equal floor(50/(${dt}/1000))
+variable 100ps equal floor(100/(${dt}/1000))
+variable 125ps equal floor(125/(${dt}/1000))
+variable 150ps equal floor(150/(${dt}/1000))
+variable 250ps equal floor(250/(${dt}/1000))
+variable 500ps equal floor(500/(${dt}/1000))
+variable 1ns   equal floor(1000/(${dt}/1000))
+variable 2ns   equal floor(2000/(${dt}/1000))
+variable 3ns   equal floor(3000/(${dt}/1000))
+variable 4ns   equal floor(4000/(${dt}/1000))
+variable 5ns   equal floor(5000/(${dt}/1000))
+variable 6ns   equal floor(6000/(${dt}/1000))
+variable 8ns   equal floor(8000/(${dt}/1000))
+variable 10ns  equal floor(10000/(${dt}/1000))
+variable 12ns  equal floor(12000/(${dt}/1000))
+variable 20ns  equal floor(20000/(${dt}/1000))
+variable 40ns  equal floor(40000/(${dt}/1000))
+variable PreEQ            equal ${4ns}
+variable eq      equal ${6ns}
+variable EnergyEQRescale     equal ${500ps}
+variable EnergyEQ            equal ${2ns}
+variable Production      equal ${6ns}
+variable dumpint equal ${2ns}
+
+variable L equal 750
+variable H equal 150
+variable W equal 150
+
+variable Nevery  equal floor(5)
+variable Nrepeat equal floor(${500ps})
+variable Nfreq   equal floor(${Nevery}*${Nrepeat})
+
+variable n_bins equal 75
+variable Lb     equal ${L}/${n_bins}
+variable binvol equal ${Lb}*${H}*${W}
+
+units real
+boundary p p p
+atom_style molecular
+bond_style harmonic
+angle_style harmonic
+dihedral_style multi/harmonic
+
+variable Sigma_CH2CH2   equal 3.95
+variable Sigma_CH3CH3   equal 3.75
+variable Epsilon_CH2CH2 equal 0.091411
+variable Epsilon_CH3CH3 equal 0.19476
+
+pair_style lj/long/coul/long long off ${LJ_Cutoff}
+special_bonds lj 0.0 0.0 0.0
+pair_modify mix arithmetic
+
+read_data ${Data}
+group G_Alkane type 1 2
+
+pair_coeff 1 1 ${Epsilon_CH2CH2} ${Sigma_CH2CH2} ${LJ_Cutoff}
+pair_coeff 2 2 ${Epsilon_CH3CH3} ${Sigma_CH3CH3} ${LJ_Cutoff}
+
+kspace_style pppm/disp 0
+kspace_modify force/disp/real   ${RealTol}
+kspace_modify force/disp/kspace ${KspaceTol}
+kspace_modify diff ad
+kspace_modify mix/disp pair
+
+neighbor 4.0 bin
+neigh_modify delay 0 every 1 check yes page 500000 one 50000
+
+velocity all create ${T} ${RNG1} mom yes rot yes dist gaussian
+velocity all zero linear
+minimize 1.0e-5 1.0e-7 1000 1000
+velocity all zero linear
+
+reset_timestep 0
+thermo 2000
+thermo_modify lost warn
+thermo_style custom step temp atoms vol press pe ke etotal enthalpy
+
+timestep ${dt}
+run_style respa 4 2 6 2 bond 1 angle 2 dihedral 3 pair 3 kspace 4
+
+dump WarmEQDump all custom ${dumpint} WarmEQ.${Run}.*lammpstrj id mol element x y z
+dump_modify WarmEQDump element CH2 CH3
+
+fix NVT all nvt temp 580 620 100
+fix RECENTER all recenter INIT INIT NULL 
+run ${PreEQ}
+
+unfix NVT
+undump WarmEQDump
+
+dump EQDump all custom ${dumpint} EQ.${Run}.*lammpstrj id mol element x y z
+dump_modify EQDump element CH2 CH3
+
+fix NVT all nvt temp ${T} ${T} 100
+run ${eq}
+velocity all zero linear
+
+unfix NVT
+undump EQDump
+
+fix NVE all nve
+velocity all scale 620
+run ${EnergyEQRescale}
+velocity all zero linear
+
+unfix NVE
+
+fix NVE all nve
+run ${EnergyEQ}
+
+unfix NVE
+
+reset_timestep 0
+write_restart W.1.NVE
+
+compute Bins all chunk/atom bin/1d x lower ${Lb} bound x 0 ${L} units box
+fix Rho all ave/chunk ${Nevery} ${Nrepeat} ${Nfreq} Bins density/mass temp adof 3 cdof 0 file ${Run}.Temp.Density
+
+compute S all stress/atom NULL
+fix Stress all ave/chunk ${Nevery} ${Nrepeat} ${Nfreq} Bins temp c_S[1] c_S[2] c_S[3] file ${Run}.stress norm none
+
+dump ProductionDump all custom ${dumpint} Prod.${Run}.*lammpstrj id mol element x y z
+dump_modify ProductionDump element CH2 CH3
+
+fix NVE all nve
+run ${Production}
+
+unfix NVE
+unfix RECENTER
+undump ProductionDump
+unfix Rho
+unfix Stress
+uncompute S
+uncompute Bins
