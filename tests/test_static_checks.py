@@ -108,3 +108,36 @@ def test_all_using_run_var_no_warning():
     result = parse(p)
     findings = check_hardcoded_filenames(result)
     assert findings == []
+
+
+from lmpcheck.static_checks import check_missing_files
+
+
+def test_missing_read_data_flagged(tmp_path):
+    p = tmp_path / "test.lmp"
+    p.write_text("read_data missing.dat\n")
+    result = parse(p)
+    findings = check_missing_files(result, tmp_path)
+    assert len(findings) == 1
+    assert findings[0].category == "missing_file"
+    assert "missing.dat" in findings[0].message
+
+
+def test_existing_read_data_not_flagged(tmp_path):
+    dat = tmp_path / "real.dat"
+    dat.write_text("# data\n")
+    p = tmp_path / "test.lmp"
+    p.write_text("read_data real.dat\n")
+    result = parse(p)
+    findings = check_missing_files(result, tmp_path)
+    assert findings == []
+
+
+def test_string_variable_expanded_for_file_check(tmp_path):
+    dat = tmp_path / "C12.dat"
+    dat.write_text("# data\n")
+    p = tmp_path / "test.lmp"
+    p.write_text("variable Data string C12.dat\nread_data ${Data}\n")
+    result = parse(p)
+    findings = check_missing_files(result, tmp_path)
+    assert findings == []

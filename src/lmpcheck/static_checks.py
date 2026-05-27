@@ -154,3 +154,38 @@ def check_hardcoded_filenames(result: ParseResult) -> list[Finding]:
                 suggestion=f"Consider using `${{{run_var}}}` as the run prefix",
             ))
     return findings
+
+
+_FILE_COMMANDS = {"read_data", "read_restart", "include"}
+
+
+def _expand_string_vars(text: str, variables: dict) -> str:
+    def replace(m: re.Match) -> str:
+        name = m.group(1)
+        v = variables.get(name)
+        if v and v.style == "string":
+            return v.value
+        return m.group(0)
+    return re.sub(r"\$\{(\w+)\}", replace, text)
+
+
+def check_missing_files(result: ParseResult, script_dir: Path) -> list[Finding]:
+    findings: list[Finding] = []
+    for cmd in result.commands:
+        if cmd.name in _FILE_COMMANDS and cmd.args:
+            raw_fname = cmd.args[0]
+            fname = _expand_string_vars(raw_fname, result.variables)
+            if "$" in fname:
+                # Still has unexpanded vars — skip (can't resolve)
+                continue
+            path = script_dir / fname
+            if not path.exists():
+                findings.append(Finding(
+                    severity="error",
+                    category="missing_file",
+                    file=cmd.file,
+                    line=cmd.line,
+                    message=f"`{cmd.name}` references missing file: {fname}",
+                    suggestion=f"Expected at: {path.resolve()}",
+                ))
+    return findings
