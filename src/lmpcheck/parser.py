@@ -2,8 +2,6 @@ import re
 from pathlib import Path
 from .models import Command, Variable, ParseResult
 
-_VAR_DEF = re.compile(r"^\s*variable\s+", re.IGNORECASE)
-
 
 def parse(script_path: Path, _depth: int = 0) -> ParseResult:
     commands: list[Command] = []
@@ -66,7 +64,8 @@ def _strip_comment(line: str) -> str:
     while i < len(line):
         if line[i] == "$" and i + 1 < len(line) and line[i + 1] == "{":
             # scan to closing }
-            j = line.index("}", i + 2) if "}" in line[i + 2:] else len(line) - 1
+            close = line.find("}", i + 2)
+            j = close if close != -1 else len(line) - 1
             result.append(line[i : j + 1])
             i = j + 1
         elif line[i] == "#":
