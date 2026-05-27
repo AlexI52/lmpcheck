@@ -2,6 +2,7 @@ import re
 from pathlib import Path
 from typing import Optional
 from .models import Command, Finding, ParseResult
+from .data_file import DataHeader
 
 _VAR_REF = re.compile(r"\$\{(\w+)\}|(?<!\w)v_(\w+)")
 
@@ -188,4 +189,44 @@ def check_missing_files(result: ParseResult, script_dir: Path) -> list[Finding]:
                     message=f"`{cmd.name}` references missing file: {fname}",
                     suggestion=f"Expected at: {path.resolve()}",
                 ))
+    return findings
+
+
+_COEFF_COMMANDS = {
+    "pair_coeff": "atom_types",
+    "bond_coeff": "bond_types",
+    "angle_coeff": "angle_types",
+    "dihedral_coeff": "dihedral_types",
+    "improper_coeff": "improper_types",
+}
+
+
+def check_atom_type_mismatches(result: ParseResult, data_header: Optional[DataHeader]) -> list[Finding]:
+    if data_header is None:
+        return []
+    findings: list[Finding] = []
+    for cmd in result.commands:
+        attr = _COEFF_COMMANDS.get(cmd.name)
+        if attr is None:
+            continue
+        max_type: int = getattr(data_header, attr, 0)
+        flagged_types: set[int] = set()
+        for arg in cmd.args[:2]:
+            if arg == "*":
+                continue
+            try:
+                t = int(arg)
+            except ValueError:
+                continue
+            if t > max_type and t not in flagged_types:
+                kind = cmd.name.split("_")[0]
+                findings.append(Finding(
+                    severity="error",
+                    category="atom_type_mismatch",
+                    file=cmd.file,
+                    line=cmd.line,
+                    message=f"`{cmd.name}` references {kind} type {t}, but data file only declares {max_type} {kind} type(s)",
+                    suggestion=f"Check {data_header.source} — it declares {max_type} {kind} type(s)",
+                ))
+                flagged_types.add(t)
     return findings

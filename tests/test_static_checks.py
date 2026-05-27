@@ -141,3 +141,35 @@ def test_string_variable_expanded_for_file_check(tmp_path):
     result = parse(p)
     findings = check_missing_files(result, tmp_path)
     assert findings == []
+
+
+from lmpcheck.static_checks import check_atom_type_mismatches
+from lmpcheck.data_file import DataHeader
+
+
+def test_excess_pair_coeff_type_flagged(tmp_path):
+    p = tmp_path / "test.lmp"
+    p.write_text("pair_coeff 3 3 0.1 3.5 9.0\n")
+    result = parse(p)
+    header = DataHeader(source=tmp_path / "fake.dat", atom_types=2)
+    findings = check_atom_type_mismatches(result, header)
+    assert len(findings) == 1
+    assert findings[0].category == "atom_type_mismatch"
+    assert "3" in findings[0].message
+
+
+def test_valid_pair_coeff_not_flagged(tmp_path):
+    p = tmp_path / "test.lmp"
+    p.write_text("pair_coeff 1 1 0.1 3.5 9.0\npair_coeff 2 2 0.2 3.7 9.0\n")
+    result = parse(p)
+    header = DataHeader(source=tmp_path / "fake.dat", atom_types=2)
+    findings = check_atom_type_mismatches(result, header)
+    assert findings == []
+
+
+def test_no_data_header_skips_check(tmp_path):
+    p = tmp_path / "test.lmp"
+    p.write_text("pair_coeff 5 5 0.1 3.5 9.0\n")
+    result = parse(p)
+    findings = check_atom_type_mismatches(result, None)
+    assert findings == []
