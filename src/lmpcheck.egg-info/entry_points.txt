@@ -1,0 +1,2 @@
+[console_scripts]
+lmpcheck = lmpcheck.cli:main
