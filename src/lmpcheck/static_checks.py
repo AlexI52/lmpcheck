@@ -52,3 +52,33 @@ def _edit_distance(a: str, b: str) -> int:
             ndp.append(min(dp[j] + (ca != cb), dp[j + 1] + 1, ndp[j] + 1))
         dp = ndp
     return dp[-1]
+
+
+_INT_ROUNDING = re.compile(r"\b(floor|ceil|round)\b")
+
+
+def check_non_integer_steps(result: ParseResult) -> list[Finding]:
+    # Collect variables defined as equal with division but no floor/ceil/round
+    div_vars: dict[str, Command] = {}
+    for cmd in result.commands:
+        if cmd.name == "variable" and len(cmd.args) >= 3 and cmd.args[1] == "equal":
+            expr = " ".join(cmd.args[2:])
+            if "/" in expr and not _INT_ROUNDING.search(expr):
+                div_vars[cmd.args[0]] = cmd
+
+    findings: list[Finding] = []
+    for cmd in result.commands:
+        if cmd.name == "run":
+            for ref in _find_var_refs(cmd.raw):
+                if ref in div_vars:
+                    src = div_vars[ref]
+                    expr = " ".join(src.args[2:])
+                    findings.append(Finding(
+                        severity="warning",
+                        category="non_integer_steps",
+                        file=cmd.file,
+                        line=cmd.line,
+                        message=f"`${{{ref}}}` may be non-integer: defined as `{expr}` (line {src.line}) without floor()",
+                        suggestion=f"variable {ref} equal floor({expr})",
+                    ))
+    return findings
