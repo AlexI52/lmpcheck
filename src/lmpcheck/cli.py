@@ -38,7 +38,7 @@ def main() -> None:
                 dat_path = script_dir / fname
                 if dat_path.exists():
                     data_header = parse_data_header(dat_path)
-            break
+                    break
 
     findings = run_static_checks(result, script_dir, data_header)
 

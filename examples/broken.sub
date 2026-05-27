@@ -1,0 +1,10 @@
+#!/bin/bash
+#SBATCH -p requeue
+#SBATCH --nodes=7
+#SBATCH --tasks-per-node=13
+#SBATCH -J BrokenTest
+#SBATCH --time=1:00:00
+
+cd /home/user/simulations/broken
+
+mpirun lmp_serial -in broken.lmp > broken.log
