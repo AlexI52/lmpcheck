@@ -230,3 +230,17 @@ def check_atom_type_mismatches(result: ParseResult, data_header: Optional[DataHe
                 ))
                 flagged_types.add(t)
     return findings
+
+
+def run_static_checks(
+    result: ParseResult,
+    script_dir: Path,
+    data_header: Optional[DataHeader] = None,
+) -> list[Finding]:
+    findings: list[Finding] = []
+    findings += check_undefined_variables(result)
+    findings += check_non_integer_steps(result)
+    findings += check_hardcoded_filenames(result)
+    findings += check_missing_files(result, script_dir)
+    findings += check_atom_type_mismatches(result, data_header)
+    return findings
