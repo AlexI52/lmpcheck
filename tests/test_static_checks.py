@@ -77,3 +77,34 @@ def test_division_not_used_in_run_not_flagged():
     result = parse(p)
     findings = check_non_integer_steps(result)
     assert findings == []
+
+
+from lmpcheck.static_checks import check_hardcoded_filenames
+
+
+def test_hardcoded_filename_flagged():
+    p = _script(
+        "variable Run equal 1\n"
+        "log L.1.log\n"
+        "dump d1 all custom 100 EQ.${Run}.lammpstrj id x y z\n"
+        "dump d2 all custom 100 Prod.${Run}.lammpstrj id x y z\n"
+        "write_restart W.1.NVE\n"
+    )
+    result = parse(p)
+    findings = check_hardcoded_filenames(result)
+    categories = [f.category for f in findings]
+    assert "hardcoded_filename" in categories
+    messages = " ".join(f.message for f in findings)
+    assert "L.1.log" in messages or "W.1.NVE" in messages
+
+
+def test_all_using_run_var_no_warning():
+    p = _script(
+        "variable Run equal 1\n"
+        "log L.${Run}.log\n"
+        "dump d1 all custom 100 EQ.${Run}.lammpstrj id x y z\n"
+        "write_restart W.${Run}.NVE\n"
+    )
+    result = parse(p)
+    findings = check_hardcoded_filenames(result)
+    assert findings == []

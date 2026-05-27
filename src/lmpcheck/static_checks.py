@@ -82,3 +82,75 @@ def check_non_integer_steps(result: ParseResult) -> list[Finding]:
                         suggestion=f"variable {ref} equal floor({expr})",
                     ))
     return findings
+
+
+_OUTPUT_NAMES = {"log", "write_restart", "write_data"}
+_VAR_IN_FILENAME = re.compile(r"\$\{(\w+)\}")
+_NUMERIC_LITERAL = re.compile(r"\d+")
+
+
+def _collect_outputs(commands: list[Command]) -> list[tuple[Command, str]]:
+    """Return (command, filename_token) for every output-producing command."""
+    out: list[tuple[Command, str]] = []
+    for cmd in commands:
+        if cmd.name in _OUTPUT_NAMES and cmd.args:
+            out.append((cmd, cmd.args[0]))
+        elif cmd.name == "dump" and len(cmd.args) >= 5:
+            out.append((cmd, cmd.args[4]))
+        elif cmd.name == "fix":
+            try:
+                idx = cmd.args.index("file")
+                if idx + 1 < len(cmd.args):
+                    out.append((cmd, cmd.args[idx + 1]))
+            except ValueError:
+                pass
+    return out
+
+
+def check_hardcoded_filenames(result: ParseResult) -> list[Finding]:
+    outputs = _collect_outputs(result.commands)
+    if not outputs:
+        return []
+
+    # Count variable references in output filenames
+    var_counts: dict[str, int] = {}
+    for _, fname in outputs:
+        for var in _VAR_IN_FILENAME.findall(fname):
+            var_counts[var] = var_counts.get(var, 0) + 1
+
+    if not var_counts:
+        return []
+
+    # The most-used variable in output filenames is the "run variable"
+    run_var = max(var_counts, key=lambda v: var_counts[v])
+    if var_counts[run_var] < max(2, len(outputs) * 0.4):
+        return []  # not consistent enough to apply heuristic
+
+    run_var_value = result.variables.get(run_var)
+    run_val = run_var_value.value if run_var_value else None
+
+    findings: list[Finding] = []
+    for cmd, fname in outputs:
+        if f"${{{run_var}}}" in fname:
+            continue  # uses the run variable — OK
+        # Warn if the filename contains a numeric literal matching the run variable's value
+        literals = _NUMERIC_LITERAL.findall(fname)
+        if literals and run_val and run_val.strip() in literals:
+            findings.append(Finding(
+                severity="warning",
+                category="hardcoded_filename",
+                file=cmd.file,
+                line=cmd.line,
+                message=f"Output filename `{fname}` hardcodes `{run_val}` instead of `${{{run_var}}}`",
+                suggestion=f"Replace `{run_val}` with `${{{run_var}}}` to avoid silent overwrites on re-runs",
+            ))
+        elif literals and not run_val:
+            findings.append(Finding(
+                severity="warning",
+                category="hardcoded_filename",
+                file=cmd.file,
+                line=cmd.line,
+                message=f"Output filename `{fname}` appears hardcoded while other outputs use `${{{run_var}}}`",
+                suggestion=f"Consider using `${{{run_var}}}` as the run prefix",
+            ))
+    return findings
