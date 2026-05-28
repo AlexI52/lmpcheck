@@ -3,12 +3,12 @@
 #SBATCH --nodes=3
 #SBATCH --tasks-per-node=64
 #SBATCH --exclude=compute-41-13
-#SBATCH -J PPPM.TraPPE.2Phase.620Thick_R1
+#SBATCH -J PPPM.TraPPE.2Phase.620Test_R1
 #SBATCH --time=48:00:00
 #SBATCH --mail-type=begin,end,fail
 #SBATCH --mail-user=agcxt@umsystem.edu
 
-cd /home/agcxt/PPPM.TraPPE.2Phase.620Thick/T620K/re0p0001/ks0p002
+cd /home/agcxt/PPPM.TraPPE.2Phase.620Test/T620K/re0p0001/ks0p002
 
 module load intelmpi/2023.2
 module load lammps/2Aug2023
