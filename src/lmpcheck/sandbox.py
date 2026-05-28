@@ -12,6 +12,7 @@ from .static_checks import _expand_string_vars
 
 _RUN_RE = re.compile(r"^(\s*run\s+)\S+(.*)$", re.IGNORECASE)
 _MINIMIZE_RE = re.compile(r"^(\s*minimize\s+)\S+\s+\S+\s+\S+\s+\S+(.*)$", re.IGNORECASE)
+_KSPACE_PPPM_DISP_RE = re.compile(r"^(\s*kspace_style\s+pppm/disp\s+)\S+(.*)", re.IGNORECASE)
 _ERROR_RE = re.compile(r"^ERROR(?: on proc \d+)?:\s*(.+?)(?:\s*\(.+\))?$")
 
 
@@ -88,14 +89,31 @@ def run_sandbox(script: Path, lmp_binary: str = "lmp", timeout: int = 60) -> lis
 
 def _rewrite_script(script: Path, tmpdir: Path) -> Path:
     lines = script.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+
+    # Detect pppm/disp so we can inject a coarse FFT mesh before the first run
+    has_pppm_disp = any(_KSPACE_PPPM_DISP_RE.match(l.strip()) for l in lines)
+    first_run_idx = next(
+        (i for i, l in enumerate(lines) if _RUN_RE.match(l.strip())),
+        len(lines),
+    )
+
     out: list[str] = []
-    for line in lines:
+    for i, line in enumerate(lines):
+        # Inject minimal FFT mesh right before first run so it overrides
+        # any accuracy-based mesh computed by kspace_modify force/disp/* lines
+        if has_pppm_disp and i == first_run_idx:
+            out.append("kspace_modify mesh 2 2 2\n")
+            out.append("kspace_modify mesh/disp 2 2 2\n")
+
         stripped = line.strip()
         if _RUN_RE.match(stripped):
             line = _RUN_RE.sub(r"\g<1>0\2", line)
         elif _MINIMIZE_RE.match(stripped):
             line = _MINIMIZE_RE.sub(r"\g<1>1.0e-4 1.0e-6 1 1\2", line)
+        elif _KSPACE_PPPM_DISP_RE.match(stripped):
+            line = _KSPACE_PPPM_DISP_RE.sub(r"\g<1>0.5\2", line)
         out.append(line)
+
     out_path = tmpdir / script.name
     out_path.write_text("".join(out), encoding="utf-8")
     return out_path
