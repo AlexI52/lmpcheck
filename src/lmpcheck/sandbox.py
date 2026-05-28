@@ -21,7 +21,9 @@ def _find_lmp_binary(name: str) -> str | None:
         return found
     if sys.platform != "win32":
         return None
-    candidates = glob(r"C:\Program Files\LAMMPS*\bin\lmp.exe")
+    local_appdata = Path.home() / "AppData" / "Local"
+    candidates = glob(str(local_appdata / "LAMMPS*" / "bin" / "lmp.exe"))
+    candidates += glob(r"C:\Program Files\LAMMPS*\bin\lmp.exe")
     candidates += glob(r"C:\Program Files (x86)\LAMMPS*\bin\lmp.exe")
     if candidates:
         return sorted(candidates)[-1]
