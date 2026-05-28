@@ -1,7 +1,9 @@
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
+from glob import glob
 from pathlib import Path
 
 from .models import Finding
@@ -13,16 +15,37 @@ _MINIMIZE_RE = re.compile(r"^(\s*minimize\s+)\S+\s+\S+\s+\S+\s+\S+(.*)$", re.IGN
 _ERROR_RE = re.compile(r"^ERROR(?: on proc \d+)?:\s*(.+?)(?:\s*\(.+\))?$")
 
 
+def _find_lmp_binary(name: str) -> str | None:
+    found = shutil.which(name)
+    if found:
+        return found
+    if sys.platform != "win32":
+        return None
+    candidates = glob(r"C:\Program Files\LAMMPS*\bin\lmp.exe")
+    candidates += glob(r"C:\Program Files (x86)\LAMMPS*\bin\lmp.exe")
+    if candidates:
+        return sorted(candidates)[-1]
+    return None
+
+
 def run_sandbox(script: Path, lmp_binary: str = "lmp", timeout: int = 60) -> list[Finding]:
-    binary = shutil.which(lmp_binary)
+    binary = _find_lmp_binary(lmp_binary)
     if not binary:
+        suggestion = (
+            "Install LAMMPS from https://packages.lammps.org/windows.html "
+            "and run the installer, or use --lmp-binary to specify the path, "
+            "or --no-sandbox to suppress this warning"
+            if sys.platform == "win32"
+            else "Install LAMMPS locally or use --lmp-binary to specify the path, "
+            "or --no-sandbox to suppress this warning"
+        )
         return [Finding(
             severity="warning",
             category="sandbox_skipped",
             file=script,
             line=0,
             message=f"lmp binary `{lmp_binary}` not found in PATH; skipping sandbox stage",
-            suggestion="Install LAMMPS locally or use --lmp-binary to specify the path, or --no-sandbox to suppress this warning",
+            suggestion=suggestion,
         )]
 
     result = parse(script)
